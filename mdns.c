@@ -16,6 +16,7 @@
 #include <netdb.h>
 #include <ifaddrs.h>
 #include <net/if.h>
+#include <sys/time.h>
 #endif
 
 // Alias some things to simulate recieving data to fuzz library
@@ -42,7 +43,7 @@ static struct sockaddr_in6 service_address_ipv6;
 static int has_ipv4;
 static int has_ipv6;
 
-volatile sig_atomic_t running = 1;
+static volatile sig_atomic_t running = 1;
 
 // Data for our service including the mDNS records
 typedef struct {
@@ -132,7 +133,7 @@ query_callback(int sock, const struct sockaddr* from, size_t addrlen, mdns_entry
 		                                              namebuffer, sizeof(namebuffer));
 		printf("%.*s : %s %.*s PTR %.*s rclass 0x%x ttl %u length %d\n",
 		       MDNS_STRING_FORMAT(fromaddrstr), entrytype, MDNS_STRING_FORMAT(entrystr),
-		       MDNS_STRING_FORMAT(namestr), rclass, ttl, (int)record_length);
+		       MDNS_STRING_FORMAT(namestr), rclass, (unsigned int)ttl, (int)record_length);
 	} else if (rtype == MDNS_RECORDTYPE_SRV) {
 		mdns_record_srv_t srv = mdns_record_parse_srv(data, size, record_offset, record_length,
 		                                              namebuffer, sizeof(namebuffer));
@@ -170,7 +171,7 @@ query_callback(int sock, const struct sockaddr* from, size_t addrlen, mdns_entry
 	} else {
 		printf("%.*s : %s %.*s type %u rclass 0x%x ttl %u length %d\n",
 		       MDNS_STRING_FORMAT(fromaddrstr), entrytype, MDNS_STRING_FORMAT(entrystr), rtype,
-		       rclass, ttl, (int)record_length);
+		       rclass, (unsigned int)ttl, (int)record_length);
 	}
 	return 0;
 }
@@ -187,8 +188,6 @@ service_callback(int sock, const struct sockaddr* from, size_t addrlen, mdns_ent
 
 	const char dns_sd[] = "_services._dns-sd._udp.local.";
 	const service_t* service = (const service_t*)user_data;
-
-	mdns_string_t fromaddrstr = ip_address_to_string(addrbuffer, sizeof(addrbuffer), from, addrlen);
 
 	size_t offset = name_offset;
 	mdns_string_t name = mdns_string_extract(data, size, &offset, namebuffer, sizeof(namebuffer));
@@ -443,7 +442,7 @@ dump_callback(int sock, const struct sockaddr* from, size_t addrlen, mdns_entry_
 		entry_type = "Additional";
 
 	printf("%.*s: %s %s %.*s rclass 0x%x ttl %u\n", MDNS_STRING_FORMAT(fromaddrstr), entry_type,
-	       record_name, MDNS_STRING_FORMAT(name), (unsigned int)rclass, ttl);
+	       record_name, MDNS_STRING_FORMAT(name), (unsigned int)rclass, (unsigned int)ttl);
 
 	return 0;
 }
@@ -1145,6 +1144,8 @@ fuzz_mdns(void) {
 
 #endif
 
+#ifdef CONFIG_UTILS_MDNS
+
 #ifdef _WIN32
 BOOL console_handler(DWORD signal) {
 	if (signal == CTRL_C_EVENT) {
@@ -1244,15 +1245,14 @@ main(int argc, const char* const* argv) {
 #ifdef MDNS_FUZZING
 	fuzz_mdns();
 #else
-	int ret;
 	if (mode == 0)
-		ret = send_dns_sd();
+		send_dns_sd();
 	else if (mode == 1)
-		ret = send_mdns_query(query, query_count);
+		send_mdns_query(query, query_count);
 	else if (mode == 2)
-		ret = service_mdns(hostname, service, service_port);
+		service_mdns(hostname, service, service_port);
 	else if (mode == 3)
-		ret = dump_mdns();
+		dump_mdns();
 #endif
 
 #ifdef _WIN32
@@ -1261,3 +1261,5 @@ main(int argc, const char* const* argv) {
 
 	return 0;
 }
+
+#endif
